@@ -328,7 +328,7 @@ function graph_sinwave {
       lc_angle_degrees=-${lc_step}
       while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=360") == 1 ]]; } ; do
         lc_angle_degrees_shifted=$(bc -l <<< "${lc_angle_degrees}-180")
-        lc_angle_radians=$(bc -l <<< "${lc_angle_degrees}/180*${gl_pi}")
+        lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
         lc_radius=$(bc -l <<< "s(${lc_angle_radians}*${lc_frequency})*${lc_magnitude}")
     
         setcursorxy $((gl_width/2-5)) $((gl_height-2))
@@ -449,8 +449,6 @@ gl_pi=$(echo "scale=10; 4*a(1)" | bc -l)
 
 #[cf]
 #[of]:main
-#!/bin/bash
-
 if [[ "$1" == "-a" ]] ; then
   adjust_aspect
   exit
