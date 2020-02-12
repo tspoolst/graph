@@ -1,0 +1,483 @@
+#!/bin/bash
+
+#[of]:comments
+#[c]o/h
+#[c]a/h
+#[c]o/a
+#[c]
+#[c]
+#[c]o / a = o * h = o
+#[c]h   h   h   a   a
+#[c]
+#[c]a / o = a * h = a
+#[c]h   h   h   o   o
+#[c]
+#[c]o / o = o * h = h
+#[c]a   h   a   o   a
+#[c]
+#[c]a / a = a * h = h
+#[c]o   h   o   a   o
+#[c]
+#[c]
+#[c]1/o = h
+#[c]  h   o
+#[c]
+#[c]1/a = h
+#[c]  h   a
+#[c]
+#[c]o / a / o = o * h * h = 1 * h = 1 / a
+#[c]h   h   h   h   a   o       a       h
+#[cf]
+
+#[of]:functions
+
+#[of]:base
+#[of]:function pause {
+function pause {
+  typeset a
+  read -n 1 -s a
+}
+#[cf]
+#[of]:function degrees_to_radions {
+function degrees_to_radions {
+  bc -l <<< "${1}/180*${gl_pi}"
+}
+#[cf]
+#[of]:function radions_to_degrees {
+function radions_to_degrees {
+  bc -l <<< "${1}/${gl_pi}*180"
+}
+#[cf]
+function get_random {
+  printf '%.0f\n' $(bc -l <<< "${RANDOM}*${1}/32767")
+}
+#[cf]
+#[of]:screen
+#[of]:function calcscreensize {
+function calcscreensize {
+  set -- $(stty size 2>/dev/null)
+  gl_height=$1
+  gl_width=$2
+  [[ -z "${gl_height}" ]] && {
+    gl_height=24
+    gl_width=80
+  }
+}
+#[cf]
+#[of]:function setcursorxy {
+function setcursorxy {
+  typeset _x _y
+  _x=$1
+  _y=$(( gl_height - $2 ))
+  echo -en "\\033[${_y};${_x}H"
+}
+#[cf]
+#[c]
+#[of]:function point_set {
+function point_set {
+  echo -en "\\033[7m \\033[0m"
+}
+#[cf]
+#[of]:function point_clear {
+function point_clear {
+  echo -en "\\033[0m "
+}
+#[cf]
+#[c]
+#[of]:function draw_line {
+function draw_line {
+  typeset x0 y0 x1 y1 dx sx dy sy err
+  x0=$1
+  y0=$2
+  x1=$3
+  y1=$4
+ 
+  if (( x0 > x1 ))
+  then
+    (( dx = x0 - x1 ))
+    (( sx = -1 ))
+  else
+    (( dx = x1 - x0 ))
+    (( sx = 1 ))
+  fi
+ 
+  if (( y0 > y1 ))
+  then
+    (( dy = y0 - y1 ))
+    (( sy = -1 ))
+  else
+    (( dy = y1 - y0 ))
+    (( sy = 1 ))
+  fi
+ 
+  if (( dx > dy ))
+  then
+    (( err = dx ))
+  else
+    (( err = -dy ))
+  fi
+  (( err /= 2 ))
+  (( e2 = 0 ))
+
+  while :
+  do
+    setcursorxy ${x0} ${y0}
+    point_set
+    (( x0 == x1 && y0 == y1 )) && return
+    (( e2 = err ))
+    if (( e2 > -dx ))
+    then
+      (( err -= dy ))
+      ((  x0 += sx ))
+    fi
+    if (( e2 < dy ))
+    then
+      (( err += dx ))
+      ((  y0 += sy ))
+    fi
+  done
+}
+#[cf]
+#[of]:function draw_line_test {
+function draw_line_test {
+  echo ${gl_width} ${gl_height}
+  for ((i=0;i<10;i++)) ; do
+    xa=$(get_random ${gl_width})
+    ya=$(get_random ${gl_height})
+    xb=$(get_random ${gl_width})
+    yb=$(get_random ${gl_height})
+    setcursorxy 0 $((gl_height-i))
+    echo -n $i draw_line ${xa} ${ya} ${xb} ${yb}
+    draw_line ${xa} ${ya} ${xb} ${yb}
+  done
+}
+#[cf]
+#[of]:function reset_last_xy {
+function reset_last_xy {
+  gl_lastx=""
+  gl_lasty=""
+}
+#[cf]
+#[c]
+#[of]:function write_done {
+function write_done {
+  setcursorxy $((gl_width/2-5)) 3
+  echo -n "                 "
+  setcursorxy $((gl_width/2-5)) 3
+  echo -n "done"
+}
+#[cf]
+#[cf]
+#[of]:coordinate system plotters
+#[of]:function adjust_aspect {
+function adjust_aspect {
+gl_range_x=50
+gl_range_y=50
+  while {
+      clear
+
+      setcursorxy $((gl_width/2-5)) $((gl_height-3))
+      echo -n "         "
+      setcursorxy $((gl_width/2-5)) $((gl_height-3))
+      printf "(%0.2f)" $(bc -l <<< "${gl_aspect}/100")
+      
+      graph_x_on_cartesian
+      read -s -n 1 -r _key
+    } ; do
+    case "${_key}" in
+      $'\E')
+        read -s -n 2 -r -t 1 _key || {
+#[of]:          esc
+#[c]        esc itself is just a single char
+#[c]        if read timeout is reached the key must be esc
+        clear
+        break
+#[cf]
+        }
+        case "${_key}" in
+#[of]:          up)
+            '[A')
+              ((gl_aspect++))
+              ;;
+#[cf]
+#[of]:          down)
+            '[B')
+              ((gl_aspect--))
+              ;;
+#[cf]
+        esac
+        ;;
+#[of]:      q)
+      q)
+        clear
+        break
+        ;;
+#[cf]
+    esac
+  done
+}
+#[cf]
+#[of]:function plot_cartesian {
+function plot_cartesian {
+  typeset _x _y
+
+  _x=$(printf "%.0f\n" $1)
+  _y=$(printf "%.0f\n" $2)
+  
+  _x=$(( gl_width / 2 + _x * gl_width * gl_aspect / gl_range_x / 2 / 100 ))
+  _y=$(( gl_height / 2 + _y * gl_height / gl_range_y / 2 ))
+
+  if [[ -z "${gl_lastx}" ]] ; then
+    gl_lastx=${_x}
+    gl_lasty=${_y}
+  else
+    draw_line ${gl_lastx} ${gl_lasty} ${_x} ${_y}
+    gl_lastx=${_x}
+    gl_lasty=${_y}
+  fi
+}
+#[cf]
+#[of]:function plot_polar {
+function plot_polar {
+  typeset lc_angle lc_radius _x _y
+  lc_angle=$1
+  lc_radius=$2
+  _x=$(bc -l <<< "c(${lc_angle})*${lc_radius}")
+  _y=$(bc -l <<< "s(${lc_angle})*${lc_radius}")
+  plot_cartesian ${_x} ${_y}  
+}
+#[cf]
+#[cf]
+#[of]:graph functions
+#[of]:function graph_x_on_cartesian {
+function graph_x_on_cartesian {
+  typeset i
+  i=45
+  reset_last_xy
+  plot_cartesian 0 0
+  plot_cartesian ${i} ${i}
+  reset_last_xy
+  plot_cartesian 0 0
+  plot_cartesian -${i} ${i}
+  reset_last_xy
+  plot_cartesian 0 0
+  plot_cartesian -${i} -${i}
+  reset_last_xy
+  plot_cartesian 0 0
+  plot_cartesian ${i} -${i}
+}
+#[cf]
+#[of]:function graph_polar_line {
+function graph_polar_line {
+  typeset lc_step lc_angle_degrees lc_angle_degrees_shifted lc_angle_radians lc_radius
+  lc_step=.5
+
+  gl_range_x=50
+  gl_range_y=50
+
+  plot_cartesian -${gl_range_x} 0
+  plot_cartesian ${gl_range_x} 0
+  reset_last_xy
+  plot_cartesian 0 -${gl_range_y}
+  plot_cartesian  0 ${gl_range_y}
+  reset_last_xy
+
+  lc_angle_degrees=-${lc_step}
+  while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=180") == 1 ]]; } ; do
+    typeset lc_angle
+    lc_angle_degrees_shifted=$(bc -l <<< "${lc_angle_degrees} - 90")
+    lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+    lc_radius=$(bc -l <<< "1 / c( $(degrees_to_radions ${lc_angle_degrees_shifted}) ) * 10")
+
+#[c]    echo "${lc_angle_degrees}, ${lc_angle_degrees_shifted}, ${lc_radius}"
+
+    setcursorxy $((gl_width/2-5)) $((gl_height -2))
+    echo -n "                                                      "
+    setcursorxy $((gl_width/2-5)) $((gl_height -2))
+    echo -n "${lc_angle_degrees}, ${lc_angle_radians}, ${lc_radius}"
+
+    [[ $(bc -l <<< "${lc_radius} > ${gl_range_x}") == 1 ]] && continue
+    plot_polar ${lc_angle_radians} ${lc_radius}
+  done
+
+  reset_last_xy
+}
+#[cf]
+#[of]:function graph_sinwave {
+function graph_sinwave {
+  typeset lc_angle_degrees lc_angle_degrees_shifted lc_angle_radians lc_radius _x
+  typeset lc_frequency lc_magnitude lc_graphtype lc_step
+  lc_frequency=1
+  lc_magnitude=40
+  lc_step=10
+  lc_graphtype=1
+
+  gl_range_x=100
+  gl_range_y=50
+
+  while {
+      clear
+
+      setcursorxy $((gl_width/2-5)) $((gl_height-1))
+      echo -n "          "
+      setcursorxy $((gl_width/2-5)) $((gl_height-1))
+      echo -n "(${lc_frequency}, ${lc_step})"
+      
+      reset_last_xy
+  
+      lc_angle_degrees=-${lc_step}
+      while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=360") == 1 ]]; } ; do
+        lc_angle_degrees_shifted=$(bc -l <<< "${lc_angle_degrees}-180")
+        lc_angle_radians=$(bc -l <<< "${lc_angle_degrees}/180*${gl_pi}")
+        lc_radius=$(bc -l <<< "s(${lc_angle_radians}*${lc_frequency})*${lc_magnitude}")
+    
+        setcursorxy $((gl_width/2-5)) $((gl_height-2))
+        echo -n "                          "
+        setcursorxy $((gl_width/2-5)) $((gl_height-2))
+        if ((lc_graphtype==1)) ; then
+          printf "(%.3f,%.3f)" ${lc_angle_degrees_shifted} ${lc_radius}
+          plot_cartesian ${lc_angle_degrees_shifted} ${lc_radius}
+        else
+          printf "(%.3f  %.3f,%.3f)" ${lc_angle_radians} ${lc_angle_degrees} ${lc_radius}
+          plot_polar ${lc_angle_radians} ${lc_radius}
+        fi
+#[c]        pause
+      done
+
+      read -s -n 1 -r _key
+    } ; do
+    case "${_key}" in
+      $'\E')
+        read -s -n 2 -r -t 1 _key || {
+#[of]:          esc
+#[c]        esc itself is just a single char
+#[c]        if read timeout is reached the key must be esc
+        clear
+        break
+#[cf]
+        }
+        case "${_key}" in
+#[of]:          up)
+            '[A')
+              ((lc_frequency++))
+              ;;
+#[cf]
+#[of]:          down)
+            '[B')
+              ((lc_frequency--))
+              ;;
+#[cf]
+#[of]:          left)
+            '[D')
+              if [[ $(bc -l <<< "${lc_step} > 1") == 1 ]] ; then
+                ((lc_step--))
+              elif [[ $(bc -l <<< "${lc_step} > .1") == 1 ]] ; then
+                lc_step=$(bc -l <<< "${lc_step}-.1")
+              fi
+              ;;
+#[cf]
+#[of]:          right)
+            '[C')
+              if [[ $(bc -l <<< "${lc_step} >= 1") == 1 ]] ; then
+                lc_step=$(printf "%.0f\n" ${lc_step})
+                ((lc_step++))
+              else
+                lc_step=$(bc -l <<< "${lc_step}+.1")
+              fi
+              ;;
+#[cf]
+        esac
+        ;;
+#[of]:      g)
+      g)
+        if ((lc_graphtype==1)) ; then
+          lc_graphtype=2
+          gl_range_x=50
+          gl_range_y=50
+        else
+          lc_graphtype=1
+          gl_range_x=100
+          gl_range_y=50
+        fi
+        ;;
+#[cf]
+#[of]:      q)
+      q)
+        clear
+        break
+        ;;
+#[cf]
+    esac
+  done
+  
+}
+#[cf]
+#[of]:function graph_square {
+function graph_square {
+  gl_range_x=50
+  gl_range_y=50
+
+  plot_cartesian -20 20
+  plot_cartesian  20 20
+  plot_cartesian  20 -20
+  plot_cartesian -20 -20
+  plot_cartesian -20 20
+  reset_last_xy
+}
+#[cf]
+#[of]:function graph_triangle {
+function graph_triangle {
+  gl_range_x=50
+  gl_range_y=50
+
+  gl_triangle_height=$(bc -l <<< "s( $(degrees_to_radions 60) )*40")
+  plot_cartesian -20 $(bc -l <<< "-${gl_triangle_height}/2")
+  plot_cartesian 20 $(bc -l <<< "-${gl_triangle_height}/2")
+  plot_cartesian 0 $(bc -l <<< "${gl_triangle_height}-${gl_triangle_height}/2")
+  plot_cartesian -20 $(bc -l <<< "-${gl_triangle_height}/2")
+  reset_last_xy
+}
+#[cf]
+#[cf]
+#[cf]
+#[of]:setup vars
+calcscreensize
+gl_range_x=100
+gl_range_y=50
+gl_aspect=50
+gl_pi=$(echo "scale=10; 4*a(1)" | bc -l)
+
+#[cf]
+#[of]:main
+#!/bin/bash
+
+if [[ "$1" == "-a" ]] ; then
+  adjust_aspect
+  exit
+fi
+
+
+clear
+graph_triangle
+write_done
+setcursorxy 0 0
+pause
+
+clear
+graph_square
+write_done
+setcursorxy 0 0
+pause
+
+clear
+graph_polar_line
+write_done
+setcursorxy 0 0
+pause
+
+clear
+graph_sinwave
+
+
+clear
+#[cf]
