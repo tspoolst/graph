@@ -65,6 +65,8 @@ if ${gl_screen_buffered} ; then
       eval "y${_y}=( \"\${gl_xb[@]}\" )"
     done
   }
+else
+  unset -f clear
 fi
 #[cf]
 #[of]:  function echo {
@@ -77,6 +79,8 @@ if ${gl_screen_buffered} ; then
       ((gl_position[0]+=1))
     done
   }
+else
+  unset -f echo
 fi
 #[cf]
 #[of]:  function printf {
@@ -89,6 +93,8 @@ if ${gl_screen_buffered} ; then
       ((gl_position[0]+=1))
     done
   }
+else
+  unset -f printf
 fi
 #[cf]
 #[c]  
@@ -96,7 +102,7 @@ fi
 if ${gl_screen_buffered} ; then
   function screen_refresh {
     typeset _y
-    command echo
+    command clear
     (
       IFS=''
       for ((_y=0;_y<=gl_height;_y++)) ; do
@@ -147,6 +153,36 @@ else
   }
 fi
 #[cf]
+
+#[of]:  function screen_save
+if ${gl_screen_buffered} ; then
+  function screen_save {
+    typeset i
+    for ((i=0;i<=gl_height;i++)) ; do
+      eval "ym${i}=( \"\${y${i}[@]}\" )"
+    done
+  }
+else
+  function screen_save {
+    :
+  }
+fi
+#[cf]
+#[of]:  function screen_restore
+if ${gl_screen_buffered} ; then
+  function screen_restore {
+    typeset i
+    for ((i=0;i<=gl_height;i++)) ; do
+      eval "y${i}=( \"\${ym${i}[@]}\" )"
+    done
+  }
+else
+  function screen_restore {
+    :
+  }
+fi
+#[cf]
+
 }
 #[cf]
 #[c]
@@ -461,7 +497,7 @@ function graph_polar_line {
 #[cf]
 #[of]:function graph_sinwave {
 function graph_sinwave {
-  typeset lc_angle_degrees lc_angle_degrees_shifted lc_angle_radians lc_radius _x
+  typeset lc_angle_degrees lc_angle_degrees_shifted lc_angle_radians lc_radius
   typeset lc_frequency lc_magnitude lc_graphtype lc_step
   lc_frequency=1
   lc_magnitude=40
@@ -570,6 +606,119 @@ function graph_sinwave {
   done
 }
 #[cf]
+#[of]:function graph_circle_triangle {
+function graph_circle_triangle {
+  typeset lc_angle_degrees lc_angle_degrees_shifted lc_angle_radians lc_radius
+  typeset lc_frequency lc_magnitude lc_graphtype lc_step
+  
+  typeset _x _y lc_lastx lc_lasty
+  typeset lc_current_angle
+
+  typeset lc_current_buffered_state
+  lc_current_buffered_state=${gl_screen_buffered}
+
+  gl_screen_buffered=true
+  setup_screen_core_functions
+  
+  
+  lc_frequency=1
+  lc_magnitude=44
+  lc_step=10
+  lc_graphtype=1
+
+  gl_range_x=50
+  gl_range_y=50
+
+
+  clear
+  reset_last_xy
+  lc_angle_degrees=-${lc_step}
+  while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=360") == 1 ]]; } ; do
+    
+    lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+    plot_polar ${lc_angle_radians} ${lc_magnitude}
+  done
+  screen_save
+
+
+  lc_current_angle=40
+  while {
+      clear
+      screen_restore
+      screen_refresh
+
+      reset_last_xy
+      lc_angle_degrees=-${lc_step}
+      while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=360") == 1 ]]; } ; do
+        
+        lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+        plot_polar ${lc_angle_radians} ${lc_magnitude}
+      done
+
+      reset_last_xy
+      lc_angle_radians=$(degrees_to_radions ${lc_current_angle})
+      _x=$(bc -l <<< "c(${lc_angle_radians})*${lc_magnitude}")
+      _y=$(bc -l <<< "s(${lc_angle_radians})*${lc_magnitude}")
+      plot_cartesian 0 0
+      plot_cartesian ${_x} ${_y}
+      plot_cartesian ${_x} 0
+      plot_cartesian 0 0
+
+      setcursorxy $((gl_width/2-5)) $((gl_height-1))
+      echo -n "                          "
+      setcursorxy $((gl_width/2-5)) $((gl_height-1))
+      printf "(%.3f, %.3f, %.3f)" ${lc_current_angle} ${_x} ${_y}
+
+      screen_refresh
+
+      read -s -N 1 -r _key
+    } ; do
+#[of]:    case "${_key}" in
+    case "${_key}" in
+      $'\E')
+        read -s -N 2 -r -t .1 _key || {
+#[of]:          esc
+#[c]        esc itself is just a single char
+#[c]        if read timeout is reached the key must be esc
+        clear
+        break
+#[cf]
+        }
+        case "${_key}" in
+#[of]:          left)
+            '[D')
+              if [[ ${lc_current_angle} != 350 ]] ; then
+                ((lc_current_angle+=10))
+              else
+                lc_current_angle=0
+              fi
+              ;;
+#[cf]
+#[of]:          right)
+            '[C')
+              if [[ ${lc_current_angle} != 0 ]] ; then
+                ((lc_current_angle-=10))
+              else
+                lc_current_angle=350
+              fi
+              ;;
+#[cf]
+        esac
+        ;;
+#[of]:      q)
+      q)
+        clear
+        break
+        ;;
+#[cf]
+    esac
+#[cf]
+  done
+  
+  gl_screen_buffered=${lc_current_buffered_state}
+  setup_screen_core_functions
+}
+#[cf]
 #[of]:function graph_square {
 function graph_square {
   clear
@@ -609,6 +758,10 @@ calcscreensize
 gl_position=( 0 0 )
 gl_range_x=100
 gl_range_y=50
+
+gl_lastx=""
+gl_lasty=""
+
 gl_aspect=50
 gl_pi=$(command echo "scale=10; 4*a(1)" | bc -l)
 
@@ -643,6 +796,8 @@ write_done
 
 graph_polar_line
 write_done
+
+graph_circle_triangle
 
 graph_sinwave
 
