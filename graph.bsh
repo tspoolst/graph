@@ -362,12 +362,13 @@ gl_range_y=50
   while {
       clear
 
+      graph_x_on_cartesian
+
       setcursorxy $((gl_width/2-5)) $((gl_height-3))
       echo -n "         "
       setcursorxy $((gl_width/2-5)) $((gl_height-3))
       printf "(%0.2f)" $(bc -l <<< "${gl_aspect}/100")
 
-      graph_x_on_cartesian
       read -s -N 1 -r _key
     } ; do
     case "${_key}" in
