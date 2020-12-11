@@ -632,14 +632,15 @@ function graph_circle_triangle {
 
 
   clear
-  reset_last_xy
-  lc_angle_degrees=-${lc_step}
-  while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=360") == 1 ]]; } ; do
-    
-    lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
-    plot_polar ${lc_angle_radians} ${lc_magnitude}
-  done
-  screen_save
+  if ${gl_screen_buffered} ; then
+    reset_last_xy
+    lc_angle_degrees=-${lc_step}
+    while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=360") == 1 ]]; } ; do
+      lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+      plot_polar ${lc_angle_radians} ${lc_magnitude}
+    done
+    screen_save
+  fi
 
 
   lc_current_angle=40
@@ -648,13 +649,14 @@ function graph_circle_triangle {
       screen_restore
       screen_refresh
 
-      reset_last_xy
-      lc_angle_degrees=-${lc_step}
-      while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=360") == 1 ]]; } ; do
-        
-        lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
-        plot_polar ${lc_angle_radians} ${lc_magnitude}
-      done
+      if ! ${gl_screen_buffered} ; then
+        reset_last_xy
+        lc_angle_degrees=-${lc_step}
+        while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=360") == 1 ]]; } ; do
+          lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+          plot_polar ${lc_angle_radians} ${lc_magnitude}
+        done
+      fi
 
       reset_last_xy
       lc_angle_radians=$(degrees_to_radions ${lc_current_angle})
