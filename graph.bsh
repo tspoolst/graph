@@ -30,14 +30,194 @@
 #[cf]
 
 #[of]:functions
-
 #[of]:base
 #[of]:function pause {
 function pause {
-  typeset a
-  read -s -N 1 -s a
+  typeset _key
+  typeset lc_timeout lc_message lc_errorlevel
+  lc_errorlevel=0
+  isnum "$1" && {
+    lc_timeout="$1"
+    shift
+  }
+  lc_message="${1:-press any key to continue}"
+  
+  mouseEnable
+
+  if ${gl_pause:-true} ; then
+    if [[ -z "${lc_timeout}" ]] ; then
+      echo -n "${lc_message}"
+      while read -s -n 1 -r _key ; do
+        pauseHandleKey "${_key}" && break
+      done
+    else
+      echo -n "${lc_message} - ${lc_timeout}"
+      for ((b=${lc_timeout};b>0;b--)) ; do
+        ((b>9)) && echo -ne "\b\b${b}" || echo -ne "\b\b ${b}"
+        if read -s -t 1 -n 1 -r _key ; then
+          pauseHandleKey "${_key}" && {
+            lc_errorlevel=0
+            break
+          }
+        else
+          lc_errorlevel=1
+        fi
+      done
+    fi
+  fi
+  mouseDisable
+  return ${lc_errorlevel}
+}
+#[of]:function pauseHandleKey {
+function pauseHandleKey {
+  typeset _key _mouse _mouseEvent
+  _key="$1"
+  case "${_key}" in
+#[of]:    escaped keys
+        $'\E')
+          read -s -n 2 -r -t 1 _key || {
+#[of]:            esc
+#[c]            esc itself is just a single char
+#[c]            if read timeout is reached the key must be esc
+            return 0
+#[cf]
+          }
+          case "${_key}" in
+#[of]:            mouse
+            '[<')
+              _mouse=""
+              _mouseEvent=( _ _ _ _ _ )
+              while read -s -n 1 -r _key ; do
+                _mouse="${_mouse}${_key}"
+                [[ "${_key}" =~ (M|m) ]] && break
+              done
+
+              [[ -z "${_mouse%%*M}" ]] && _mouseEvent[4]="down"
+              [[ -z "${_mouse%%*m}" ]] && _mouseEvent[4]="up"
+              _mouse="${_mouse:0:-1}"
+              _mouseEvent=( ${_mouse//\;/ } _ ${_mouseEvent[4]} )
+
+              [[ "${_mouseEvent[0]}" =~ (1) && "${_mouseEvent[4]}" == "down" ]] && {
+                if read -s -n 1 -r _key ; then
+                  pauseHandleKey "${_key}" && return 0
+                else
+                  return 1
+                fi
+              }
+
+              [[ "${_mouseEvent[0]}" =~ (0|1|2) && "${_mouseEvent[4]}" == "up" ]]
+              ;;
+#[cf]
+#[of]:            *)
+            *)
+              return 0
+              ;;
+#[cf]
+          esac
+          ;;
+#[cf]
+#[of]:    *)
+        *)
+          return 0
+          ;;
+#[cf]
+  esac
 }
 #[cf]
+#[cf]
+#[of]:function askyn {
+function askyn {
+  typeset _key _return
+  mouseEnable
+  echo -n "${1:-continue}? [y/n] "
+  while true ; do
+    read -s -n 1 -r _key
+    case "${_key}" in
+#[of]:      escaped keys
+      $'\E')
+        read -s -n 2 -r -t 1 _key || {
+#[of]:          esc
+#[c]            esc itself is just a single char
+#[c]            if read timeout is reached the key must be esc
+            continue
+#[cf]
+        }
+        case "${_key}" in
+#[of]:          mouse
+            '[<')
+              _mouse=""
+              _mouseEvent=( _ _ _ _ _ )
+              while read -s -n 1 -r _key ; do
+                _mouse="${_mouse}${_key}"
+                [[ "${_key}" =~ (M|m) ]] && break
+              done
+              [[ -z "${_mouse%%*M}" ]] && _mouseEvent[4]="down"
+              [[ -z "${_mouse%%*m}" ]] && _mouseEvent[4]="up"
+              _mouse="${_mouse:0:-1}"
+              _mouseEvent=( ${_mouse//\;/ } _ ${_mouseEvent[4]} )
+
+              [[ "${_mouseEvent[0]}" =~ (0) && "${_mouseEvent[4]}" == "up" ]] && { _return=0;break; }
+              [[ "${_mouseEvent[0]}" =~ (2) && "${_mouseEvent[4]}" == "up" ]] && { _return=1;break; }
+              ;;
+#[cf]
+        esac
+        ;;
+#[cf]
+      y) _return=0;break;;
+      *) _return=1;break;;
+    esac
+  done
+  echo
+  mouseDisable
+  return ${_return}
+}
+#[cf]
+#[c]
+#[of]:function isnum {
+function isnum {
+#[of]:  usage
+  if false ; then
+    echo "Usage: isnum arg"
+    echo "Error: must have at least 1 argument"
+    echo "Description: checks if arg is a number"
+    echo "Examples:"
+    echo '  "if isnum 50 ; then'
+    echo '    echo is a number'
+    echo '  else'
+    echo '    echo is not a number'
+    echo '  fi"'
+    echo '  statement may also be negated'
+    echo '    "if ! isnum 50 ; then"'
+    echo "Returns:"
+    echo "  0 true"
+    echo "  1 false"
+    exit 1
+  fi
+#[cf]
+}
+  function isnum {
+    #set IFS to a sane value
+    typeset IFS
+    IFS=' 	
+'
+    if [[ "$1" == ?(+|-)+([0-9]) ]] ; then
+     return 0
+    fi
+    return 1
+  }
+#[cf]
+#[c]
+#[of]:function mouseEnable {
+function mouseEnable {
+  command echo -en "\e[?1000h\e[?1006h\e[?1015h"
+}
+#[cf]
+#[of]:function mouseDisable {
+function mouseDisable {
+  command echo -en "\e[?1000l\e[?1006l\e[?1015l"
+}
+#[cf]
+#[c]
 #[of]:function degrees_to_radions {
 function degrees_to_radions {
   bc -l <<< "${1}/180*${gl_pi}"
@@ -97,7 +277,7 @@ else
   unset -f printf
 fi
 #[cf]
-#[c]  
+  
 #[of]:  function screen_refresh {
 if ${gl_screen_buffered} ; then
   function screen_refresh {
@@ -130,7 +310,7 @@ else
   }
 fi
 #[cf]
-#[c]  
+  
 #[of]:  function point_set {
 if ${gl_screen_buffered} ; then
   function point_set {
@@ -182,10 +362,9 @@ else
   }
 fi
 #[cf]
-
 }
 #[cf]
-#[c]
+
 #[of]:function calcscreensize {
 function calcscreensize {
   set -- $(stty size 2>/dev/null)
@@ -197,7 +376,7 @@ function calcscreensize {
   }
 }
 #[cf]
-#[c]
+
 #[of]:function draw_line {
 function draw_line {
   typeset x0 y0 x1 y1 dx sx dy sy err
@@ -258,7 +437,7 @@ function reset_last_xy {
   gl_lasty=""
 }
 #[cf]
-#[c]
+
 #[of]:function write_done {
 function write_done {
   setcursorxy $((gl_width/2-5)) 3
@@ -269,7 +448,16 @@ function write_done {
   pause
 }
 #[cf]
-#[c]
+#[of]:function write_pre-render {
+function write_pre-render {
+  setcursorxy $((gl_width/2-5)) 3
+  echo -n "                 "
+  setcursorxy $((gl_width/2-5)) 3
+  echo -n "pre-render"
+  setcursorxy 0 0
+}
+#[cf]
+
 #[of]:function draw_test_lines {
 function draw_test_lines {
   typeset i xa ya xb yb _key
@@ -288,7 +476,8 @@ function draw_test_lines {
     done
     screen_refresh
 
-      read -s -N 1 -r _key
+#[c]      read -s -N 1 -r _key
+      askyn ""
     } ; do
 #[of]:    case "${_key}" in
     case "${_key}" in
@@ -353,12 +542,195 @@ function draw_test_edges {
   screen_refresh
 }
 #[cf]
+
+#[of]:function draw_tree {
+function draw_tree {
+  typeset xa ya xb yb lc_length lc_iterations lc_angle_degrees lc_angle_radians lc_angle_increment
+  clear
+  
+  lc_rwidth=$(real_to_rel ${gl_width})
+  lc_rheight=${gl_height}
+  
+  
+  lc_length=$((lc_rheight/3))
+  lc_angle_degrees=0
+  lc_angle_increment=30
+  lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+  lc_iterations=2
+
+  xa=$((lc_rwidth/2))
+  ya=0
+  xb=$(command printf "%.0f\n" $(bc -l <<< "s(${lc_angle_radians})*${lc_length}+${xa}"))
+  yb=$(command printf "%.0f\n" $(bc -l <<< "c(${lc_angle_radians})*${lc_length}+${ya}"))
+#[c]  echo draw_line $(rel_to_real ${xa}) ${ya} $(rel_to_real ${xb}) ${yb}
+  draw_line $(rel_to_real ${xa}) ${ya} $(rel_to_real ${xb}) ${yb}
+
+  draw_tree_recurse ${xb} ${yb} ${lc_length} 60 ${lc_angle_increment} ${lc_iterations}
+
+  setcursorxy 0 0
+
+exit
+  lc_angle_degrees=$((lc_angle_degrees+lc_angle_increment))
+  lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+  lc_length=$((lc_length*3/4))
+
+  xa=${xb}
+  ya=${yb}
+  xb=$(command printf "%.0f\n" $(bc -l <<< "s(${lc_angle_radians})*${lc_length}+${xa}"))
+  yb=$(command printf "%.0f\n" $(bc -l <<< "c(${lc_angle_radians})*${lc_length}+${ya}"))
+  draw_line $(rel_to_real ${xa}) ${ya} $(rel_to_real ${xb}) ${yb}
+  lc_angle_degrees=$((lc_angle_degrees+lc_angle_increment))
+  lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+  lc_length=$((lc_length*3/4))
+
+  xa=${xb}
+  ya=${yb}
+  xb=$(command printf "%.0f\n" $(bc -l <<< "s(${lc_angle_radians})*${lc_length}+${xa}"))
+  yb=$(command printf "%.0f\n" $(bc -l <<< "c(${lc_angle_radians})*${lc_length}+${ya}"))
+  draw_line $(rel_to_real ${xa}) ${ya} $(rel_to_real ${xb}) ${yb}
+  lc_angle_degrees=$((lc_angle_degrees+lc_angle_increment))
+  lc_angle_radians=$(degrees_to_radions ${lc_angle_degrees})
+  lc_length=$((lc_length*3/4))
+
+exit
+  echo draw_line ${xa} ${ya} ${xb} ${yb}
+  draw_line $(rel_to_real ${xa}) ${ya} $(rel_to_real ${xb}) ${yb}
+
+
+  echo
+#[c]  _x=$(command printf "%.0f\n" $1)
+#[c]  _y=$(command printf "%.0f\n" $2)
+#[c]  
+#[c]  _x=$(( gl_width / 2 + _x * gl_width * gl_aspect / gl_range_x / 2 / 100 ))
+#[c]  _y=$(( gl_height / 2 + _y * gl_height / gl_range_y / 2 ))
+
+  echo
+  echo $(( xb * gl_width * gl_aspect / gl_range_x / 100 ))
+  echo draw_line ${xb} ${yb} $(( xb * gl_width * gl_aspect / gl_range_x / 2 / 100 )) $((yb+20))
+
+#[c]  draw_line \
+#[c]    ${xb} \
+#[c]    ${yb} \
+#[c]    $(command printf "%.0f\n" $(bc -l <<< "c(${lc_angle_radians})*${lc_length}*${gl_aspect}/2/100+${xb}")) \
+#[c]    $(command printf "%.0f\n" $(bc -l <<< "s(${lc_angle_radians})*${lc_length}/2+${yb}"))
+  echo $(bc -l <<< "c(${lc_angle_radians})") $(bc -l <<< "s(${lc_angle_radians})")
+
+  screen_refresh
+
+#[c]  10 REM PROMPT USER FOR ANGLE
+#[c]  20 TEXT : HOME
+#[c]  30 PRINT "I WILL DRAW YOU A TREE!"
+#[c]  40 PRINT "ENTER AN ANGLE IN RADIANS"
+#[c]  50 INPUT DA
+#[c]  
+#[c]  60 REM HIGH RESOLUTION GRAPHICS
+#[c]  70 HGR
+#[c]  80 HCOLOR = 3
+#[c]  
+#[c]  90 REM INITIAL VARIABLES
+#[c]  100 SHRINK = 0.67
+#[c]  110 A = 3.14159 * 0.5
+#[c]  120 L = 50
+#[c]  130 LEVEL = 0
+#[c]  140 MAXLEV = 10
+#[c]  150 X = 140 : Y = 159
+#[c]  
+#[c]  160 REM ARRAY FOR STACK OF TREE POSITIONS
+#[c]  170 DIM XS(MAXLEV) : DIM YS(MAXLEV)
+#[c]  
+#[c]  180 REM START BRANCHING
+#[c]  190 GOSUB 1000
+#[c]  200 END
+#[c]  
+#[c]  1000 REM DRAW A SINGLE BRANCH!
+#[c]
+#[c]  1010 REM CALCULATE NEXT POINT
+#[c]  1020 DX = L * COS(A)
+#[c]  1030 DY = L * SIN(A)
+#[c]  1040 NX = X + DX : NY = Y - DY
+#[c]  
+#[c]  1050 REM DRAW BRANCH
+#[c]  1060 HPLOT X, Y TO NX, NY
+#[c]  
+#[c]  1070 REM SAVE POSITION
+#[c]  1080 XS(LEVEL) = X : YS(LEVEL) = Y
+#[c]  
+#[c]  1090 REM NEXT BRANCH
+#[c]  1100 X = NX : Y = NY
+#[c]  1110 LEVEL = LEVEL + 1
+#[c]  1120 A = A + DA
+#[c]  1130 L = L * SHRINK
+#[c]  1140 IF LEVEL < MAXLEV THEN GOSUB 1000
+#[c]  
+#[c]  1150 REM AND ANOTHER BRANCH
+#[c]  1160 A = A - DA * 2
+#[c]  1170 IF LEVEL < MAXLEV THEN GOSUB 1000
+#[c]  
+#[c]  1180 REM POP BACK
+#[c]  1190 A = A + DA
+#[c]  1200 L = L / SHRINK
+#[c]  1210 LEVEL = LEVEL - 1
+#[c]  1220 X = XS(LEVEL) : Y = YS(LEVEL)
+#[c]  1230 RETURN
+}
+#[of]:function draw_tree_recurse {
+function draw_tree_recurse {
+#[c]  draw_tree_recurse ${xb} ${yb} ${lc_length} ${lc_angle_degrees} ${lc_angle_increment} ${lc_iterations}
+#[c]
+  typeset xa ya xb yb lc_length lc_iterations
+  typeset lc_angle_degrees lc_angle_degrees_r lc_angle_degrees_l
+  typeset lc_angle_radians_r lc_angle_radians_l
+  typeset lc_angle_increment
+  
+  lc_iterations=$(($6-1))
+  ((lc_iterations<=0)) && return
+
+  xa=$1
+  ya=$2
+#[c]  xb=$(command printf "%.0f\n" $(bc -l <<< "s(${lc_angle_radians})*${lc_length}+${xa}"))
+#[c]  yb=$(command printf "%.0f\n" $(bc -l <<< "c(${lc_angle_radians})*${lc_length}+${ya}"))
+  lc_length=$3
+  lc_angle_degrees=$4
+  lc_angle_increment=$(($5))
+  
+#[c]  lc_angle_degrees=$((lc_angle_degrees+lc_angle_increment))
+  lc_angle_degrees_r=$((lc_angle_degrees+lc_angle_increment))
+  lc_angle_degrees_l=$((lc_angle_degrees-lc_angle_increment))
+  lc_angle_radians_r=$(degrees_to_radions ${lc_angle_degrees_r})
+  lc_angle_radians_l=$(degrees_to_radions ${lc_angle_degrees_l})
+  lc_length=$((lc_length/2))
+
+  xb=$(command printf "%.0f\n" $(bc -l <<< "${xa}+s(${lc_angle_radians_r})*${lc_length}"))
+  yb=$(command printf "%.0f\n" $(bc -l <<< "${ya}+c(${lc_angle_radians_l})*${lc_length}"))
+  draw_line $(rel_to_real ${xa}) ${ya} $(rel_to_real ${xb}) ${yb}
+  draw_tree_recurse ${xb} ${yb} ${lc_length} $((lc_angle_degrees+lc_angle_increment)) ${lc_angle_increment} ${lc_iterations}
+
+  xb=$(command printf "%.0f\n" $(bc -l <<< "${xa}-s(${lc_angle_radians})*${lc_length}"))
+  yb=$(command printf "%.0f\n" $(bc -l <<< "${ya}+c(${lc_angle_radians})*${lc_length}"))
+  draw_line $(rel_to_real ${xa}) ${ya} $(rel_to_real ${xb}) ${yb}
+  draw_tree_recurse ${xb} ${yb} ${lc_length} $((lc_angle_degrees+lc_angle_increment)) ${lc_angle_increment} ${lc_iterations}
+
+}
+#[cf]
+#[of]:function real_to_rel {
+function real_to_rel {
+  echo -n $(($1 * gl_aspect / 100))
+}
+#[cf]
+#[of]:function rel_to_real {
+function rel_to_real {
+  echo -n $(($1 * 100 / gl_aspect))
+}
+#[cf]
+#[cf]
 #[cf]
 #[of]:coordinate system plotters
 #[of]:function adjust_aspect {
 function adjust_aspect {
-gl_range_x=50
-gl_range_y=50
+  gl_range_x=50
+  gl_range_y=50
+
+  mouseEnable
   while {
       clear
 
@@ -371,6 +743,95 @@ gl_range_y=50
 
       read -s -N 1 -r _key
     } ; do
+#[of]:    case "${_key}" in
+    case "${_key}" in
+#[of]:      escaped keys
+      $'\E')
+        read -s -N 2 -r -t .1 _key || {
+#[of]:          esc
+#[c]        esc itself is just a single char
+#[c]        if read timeout is reached the key must be esc
+        clear
+        break
+#[cf]
+        }
+        case "${_key}" in
+#[of]:          mouse
+            '[<')
+              _mouse=""
+              _mouseEvent=( _ _ _ _ _ )
+              while read -s -n 1 -r _key ; do
+                _mouse="${_mouse}${_key}"
+                [[ "${_key}" =~ (M|m) ]] && break
+              done
+              [[ -z "${_mouse%%*M}" ]] && _mouseEvent[4]="down"
+              [[ -z "${_mouse%%*m}" ]] && _mouseEvent[4]="up"
+              _mouse="${_mouse:0:-1}"
+              _mouseEvent=( ${_mouse//;/ } _ ${_mouseEvent[4]} )
+
+              ##eat mouse button up
+              [[ ! "${_mouseEvent[0]}" =~ (64|65) ]] && {
+                read -s -N 1 -r _key
+                while read -s -n 1 -r _key ; do
+                  _mouse="${_mouse}${_key}"
+                  [[ "${_key}" =~ (M|m) ]] && break
+                done
+                _mouseEvent[4]="up"
+              }
+
+#[c]              [[ "${_mouseEvent[0]}" == 0 ]] && _mouseEvent[3]="button_left"
+#[c]              [[ "${_mouseEvent[0]}" == 1 ]] && _mouseEvent[3]="button_middle"
+#[c]              [[ "${_mouseEvent[0]}" == 2 ]] && _mouseEvent[3]="button_right"
+
+#[of]:              left button click
+              [[ "${_mouseEvent[0]}" == 0 ]] && _mouseEvent[3]="button_left"
+#[cf]
+#[of]:              middle button click
+              [[ "${_mouseEvent[0]}" == 1 ]] && _mouseEvent[3]="button_middle"
+#[cf]
+#[of]:              right button click
+              if [[ "${_mouseEvent[0]}" == 2 && "${_mouseEvent[4]}" == "up" ]] ; then
+                clear
+                break
+              fi
+#[cf]
+
+#[of]:              scroll up
+              if [[ "${_mouseEvent[0]}" == 64 ]] ; then
+                ((gl_aspect++))
+              fi
+#[cf]
+#[of]:              scroll down
+              if [[ "${_mouseEvent[0]}" == 65 ]] ; then
+                ((gl_aspect--))
+              fi
+#[cf]
+#[c]              echo "${_mouseEvent[@]}---mouse"
+              ;;
+#[cf]
+#[of]:          up)
+            '[A')
+              ((gl_aspect++))
+              ;;
+#[cf]
+#[of]:          down)
+            '[B')
+              ((gl_aspect--))
+              ;;
+#[cf]
+        esac
+        ;;
+#[cf]
+#[of]:      q)
+      q)
+        clear
+        break
+        ;;
+#[cf]
+    esac
+#[cf]
+
+
     case "${_key}" in
       $'\E')
         read -s -N 2 -r -t 1 _key || {
@@ -402,6 +863,7 @@ gl_range_y=50
 #[cf]
     esac
   done
+  mouseDisable
 }
 #[cf]
 #[of]:function plot_cartesian {
@@ -508,6 +970,7 @@ function graph_sinwave {
   gl_range_x=100
   gl_range_y=50
 
+  mouseEnable
   while {
       clear
 
@@ -542,6 +1005,7 @@ function graph_sinwave {
     } ; do
 #[of]:    case "${_key}" in
     case "${_key}" in
+#[of]:      escaped keys
       $'\E')
         read -s -N 2 -r -t .1 _key || {
 #[of]:          esc
@@ -552,6 +1016,79 @@ function graph_sinwave {
 #[cf]
         }
         case "${_key}" in
+#[of]:          mouse
+            '[<')
+              _mouse=""
+              _mouseEvent=( _ _ _ _ _ )
+              while read -s -n 1 -r _key ; do
+                _mouse="${_mouse}${_key}"
+                [[ "${_key}" =~ (M|m) ]] && break
+              done
+              [[ -z "${_mouse%%*M}" ]] && _mouseEvent[4]="down"
+              [[ -z "${_mouse%%*m}" ]] && _mouseEvent[4]="up"
+              _mouse="${_mouse:0:-1}"
+              _mouseEvent=( ${_mouse//;/ } _ ${_mouseEvent[4]} )
+
+              ##eat mouse button up
+              [[ ! "${_mouseEvent[0]}" =~ (64|65) ]] && {
+                read -s -N 1 -r _key
+                while read -s -n 1 -r _key ; do
+                  _mouse="${_mouse}${_key}"
+                  [[ "${_key}" =~ (M|m) ]] && break
+                done
+                _mouseEvent[4]="up"
+              }
+
+#[c]              [[ "${_mouseEvent[0]}" == 0 ]] && _mouseEvent[3]="button_left"
+#[c]              [[ "${_mouseEvent[0]}" == 1 ]] && _mouseEvent[3]="button_middle"
+#[c]              [[ "${_mouseEvent[0]}" == 2 ]] && _mouseEvent[3]="button_right"
+
+#[of]:              left button click
+              if [[ "${_mouseEvent[0]}" == 0 && "${_mouseEvent[4]}" == "up" ]] ; then
+                if [[ $(bc -l <<< "${lc_step} > 1") == 1 ]] ; then
+                  ((lc_step--))
+                elif [[ $(bc -l <<< "${lc_step} > .1") == 1 ]] ; then
+                  lc_step=$(bc -l <<< "${lc_step}-.1")
+                fi
+              fi
+#[cf]
+#[of]:              middle button click
+              if [[ "${_mouseEvent[0]}" == 1 && "${_mouseEvent[4]}" == "up" ]] ; then
+                if ((lc_graphtype==1)) ; then
+                  lc_graphtype=2
+                  gl_range_x=50
+                  gl_range_y=50
+                else
+                  lc_graphtype=1
+                  gl_range_x=100
+                  gl_range_y=50
+                fi
+              fi
+#[cf]
+#[of]:              right button click
+              if [[ "${_mouseEvent[0]}" == 2 && "${_mouseEvent[4]}" == "up" ]] ; then
+                if [[ $(bc -l <<< "${lc_step} >= 1") == 1 ]] ; then
+                  lc_step=$(command printf "%.0f\n" ${lc_step})
+                  ((lc_step++))
+                else
+                  lc_step=$(bc -l <<< "${lc_step}+.1")
+                fi
+              fi
+#[cf]
+
+#[of]:              scroll up
+              if [[ "${_mouseEvent[0]}" == 64 ]] ; then
+                ((lc_frequency++))
+              fi
+#[cf]
+#[of]:              scroll down
+              if [[ "${_mouseEvent[0]}" == 65 ]] ; then
+                ((lc_frequency--))
+              fi
+#[cf]
+#[c]              echo "${_mouseEvent[@]}---mouse"
+              ;;
+#[cf]
 #[of]:          up)
             '[A')
               ((lc_frequency++))
@@ -583,6 +1120,7 @@ function graph_sinwave {
 #[cf]
         esac
         ;;
+#[cf]
 #[of]:      g)
       g)
         if ((lc_graphtype==1)) ; then
@@ -605,6 +1143,7 @@ function graph_sinwave {
     esac
 #[cf]
   done
+  mouseDisable
 }
 #[cf]
 #[of]:function graph_circle_triangle {
@@ -632,6 +1171,10 @@ function graph_circle_triangle {
 
 
   clear
+  write_pre-render
+  screen_refresh
+
+  clear
   if ${gl_screen_buffered} ; then
     reset_last_xy
     lc_angle_degrees=-${lc_step}
@@ -642,12 +1185,11 @@ function graph_circle_triangle {
     screen_save
   fi
 
-
   lc_current_angle=40
+  mouseEnable
   while {
       clear
       screen_restore
-      screen_refresh
 
       if ! ${gl_screen_buffered} ; then
         reset_last_xy
@@ -678,6 +1220,7 @@ function graph_circle_triangle {
     } ; do
 #[of]:    case "${_key}" in
     case "${_key}" in
+#[of]:      escaped keys
       $'\E')
         read -s -N 2 -r -t .1 _key || {
 #[of]:          esc
@@ -688,6 +1231,67 @@ function graph_circle_triangle {
 #[cf]
         }
         case "${_key}" in
+#[of]:          mouse
+            '[<')
+              _mouse=""
+              _mouseEvent=( _ _ _ _ _ )
+              while read -s -n 1 -r _key ; do
+                _mouse="${_mouse}${_key}"
+                [[ "${_key}" =~ (M|m) ]] && break
+              done
+              [[ -z "${_mouse%%*M}" ]] && _mouseEvent[4]="down"
+              [[ -z "${_mouse%%*m}" ]] && _mouseEvent[4]="up"
+              _mouse="${_mouse:0:-1}"
+              _mouseEvent=( ${_mouse//;/ } _ ${_mouseEvent[4]} )
+
+              ##eat mouse button up
+              [[ ! "${_mouseEvent[0]}" =~ (64|65) ]] && {
+                read -s -N 1 -r _key
+                while read -s -n 1 -r _key ; do
+                  _mouse="${_mouse}${_key}"
+                  [[ "${_key}" =~ (M|m) ]] && break
+                done
+                _mouseEvent[4]="up"
+              }
+
+#[c]              [[ "${_mouseEvent[0]}" == 0 ]] && _mouseEvent[3]="button_left"
+#[c]              [[ "${_mouseEvent[0]}" == 1 ]] && _mouseEvent[3]="button_middle"
+#[c]              [[ "${_mouseEvent[0]}" == 2 ]] && _mouseEvent[3]="button_right"
+
+#[of]:              left button click
+              [[ "${_mouseEvent[0]}" == 0 ]] && _mouseEvent[3]="button_left"
+#[cf]
+#[of]:              middle button click
+              [[ "${_mouseEvent[0]}" == 1 ]] && _mouseEvent[3]="button_middle"
+#[cf]
+#[of]:              right button click
+              if [[ "${_mouseEvent[0]}" == 2 && "${_mouseEvent[4]}" == "up" ]] ; then
+                clear
+                break
+              fi
+#[cf]
+
+#[of]:              scroll up
+              if [[ "${_mouseEvent[0]}" == 64 ]] ; then
+                if [[ ${lc_current_angle} != 350 ]] ; then
+                  ((lc_current_angle+=10))
+                else
+                  lc_current_angle=0
+                fi
+              fi
+#[cf]
+#[of]:              scroll down
+              if [[ "${_mouseEvent[0]}" == 65 ]] ; then
+                if [[ ${lc_current_angle} != 0 ]] ; then
+                  ((lc_current_angle-=10))
+                else
+                  lc_current_angle=350
+                fi
+              fi
+#[cf]
+#[c]              echo "${_mouseEvent[@]}---mouse"
+              ;;
+#[cf]
 #[of]:          left)
             '[D')
               if [[ ${lc_current_angle} != 350 ]] ; then
@@ -708,6 +1312,7 @@ function graph_circle_triangle {
 #[cf]
         esac
         ;;
+#[cf]
 #[of]:      q)
       q)
         clear
@@ -717,7 +1322,8 @@ function graph_circle_triangle {
     esac
 #[cf]
   done
-  
+  mouseDisable
+
   gl_screen_buffered=${lc_current_buffered_state}
   setup_screen_core_functions
 }
@@ -759,7 +1365,7 @@ function graph_triangle {
 #[of]:setup vars
 calcscreensize
 gl_position=( 0 0 )
-gl_range_x=100
+gl_range_x=50
 gl_range_y=50
 
 gl_lastx=""
@@ -797,13 +1403,17 @@ write_done
 graph_square
 write_done
 
-graph_polar_line
-write_done
+#[c]graph_polar_line
+#[c]write_done
 
 graph_circle_triangle
 
 graph_sinwave
 
-clear
+#[c]draw_tree
+#[c]write_done
+
+#[c]clear
+
 #[cf]
 # vim:number:tabstop=2:shiftwidth=2:autoindent:foldmethod=marker:foldlevel=0:foldmarker=#[of],#[cf]
