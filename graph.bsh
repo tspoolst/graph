@@ -209,11 +209,13 @@ function isnum {
 #[c]
 #[of]:function mouseEnable {
 function mouseEnable {
+  stty -echo
   command echo -en "\e[?1000h\e[?1006h\e[?1015h"
 }
 #[cf]
 #[of]:function mouseDisable {
 function mouseDisable {
+  stty echo
   command echo -en "\e[?1000l\e[?1006l\e[?1015l"
 }
 #[cf]
@@ -929,13 +931,15 @@ function graph_polar_line {
   gl_range_x=50
   gl_range_y=50
 
+  reset_last_xy
   plot_cartesian -${gl_range_x} 0
   plot_cartesian ${gl_range_x} 0
+
   reset_last_xy
   plot_cartesian 0 -${gl_range_y}
   plot_cartesian  0 ${gl_range_y}
-  reset_last_xy
 
+  reset_last_xy
   lc_angle_degrees=-${lc_step}
   while { lc_angle_degrees=$(bc -l <<< "${lc_angle_degrees}+${lc_step}");[[ $(bc -l <<< "${lc_angle_degrees} <=180") == 1 ]]; } ; do
     typeset lc_angle
@@ -954,7 +958,6 @@ function graph_polar_line {
     plot_polar ${lc_angle_radians} ${lc_radius}
   done
 
-  reset_last_xy
   screen_refresh
 }
 #[cf]
@@ -1335,12 +1338,12 @@ function graph_square {
   gl_range_x=50
   gl_range_y=50
 
+  reset_last_xy
   plot_cartesian -20 20
   plot_cartesian  20 20
   plot_cartesian  20 -20
   plot_cartesian -20 -20
   plot_cartesian -20 20
-  reset_last_xy
   screen_refresh
 }
 #[cf]
@@ -1351,12 +1354,12 @@ function graph_triangle {
   gl_range_x=50
   gl_range_y=50
 
+  reset_last_xy
   gl_triangle_height=$(bc -l <<< "s( $(degrees_to_radions 60) )*40")
   plot_cartesian -20 $(bc -l <<< "-${gl_triangle_height}/2")
   plot_cartesian 20 $(bc -l <<< "-${gl_triangle_height}/2")
   plot_cartesian 0 $(bc -l <<< "${gl_triangle_height}-${gl_triangle_height}/2")
   plot_cartesian -20 $(bc -l <<< "-${gl_triangle_height}/2")
-  reset_last_xy
   screen_refresh
 }
 #[cf]
